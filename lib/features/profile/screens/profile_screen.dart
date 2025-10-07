@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/theme_provider.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -14,6 +15,25 @@ class ProfileScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Profile'),
         actions: [
+          // Theme Toggle Button
+          Consumer(
+            builder: (context, ref, child) {
+              final themeMode = ref.watch(themeModeProvider);
+              return IconButton(
+                icon: Icon(
+                  themeMode == ThemeMode.dark 
+                      ? Icons.light_mode 
+                      : Icons.dark_mode,
+                ),
+                onPressed: () {
+                  ref.read(themeModeProvider.notifier).toggleTheme();
+                },
+                tooltip: themeMode == ThemeMode.dark 
+                    ? 'Switch to Light Mode' 
+                    : 'Switch to Dark Mode',
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () => context.push('/profile/edit'),
@@ -104,6 +124,32 @@ class ProfileScreen extends ConsumerWidget {
               Card(
                 child: Column(
                   children: [
+                    // Theme Toggle
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final themeMode = ref.watch(themeModeProvider);
+                        return ListTile(
+                          leading: Icon(
+                            themeMode == ThemeMode.dark 
+                                ? Icons.dark_mode 
+                                : Icons.light_mode,
+                          ),
+                          title: const Text('Theme'),
+                          subtitle: Text(
+                            themeMode == ThemeMode.dark 
+                                ? 'Dark Mode' 
+                                : 'Light Mode',
+                          ),
+                          trailing: Switch(
+                            value: themeMode == ThemeMode.dark,
+                            onChanged: (value) {
+                              ref.read(themeModeProvider.notifier).toggleTheme();
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.lock),
                       title: const Text('Change Password'),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/theme_provider.dart';
 
 class CustomerHomeScreen extends ConsumerStatefulWidget {
   const CustomerHomeScreen({super.key});
@@ -70,6 +71,25 @@ class CustomerDiscoverPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Discover Coupons'),
         actions: [
+          // Theme Toggle Button
+          Consumer(
+            builder: (context, ref, child) {
+              final themeMode = ref.watch(themeModeProvider);
+              return IconButton(
+                icon: Icon(
+                  themeMode == ThemeMode.dark 
+                      ? Icons.light_mode 
+                      : Icons.dark_mode,
+                ),
+                onPressed: () {
+                  ref.read(themeModeProvider.notifier).toggleTheme();
+                },
+                tooltip: themeMode == ThemeMode.dark 
+                    ? 'Switch to Light Mode' 
+                    : 'Switch to Dark Mode',
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
