@@ -234,7 +234,7 @@ class AuthService {
       } catch (e) {
         print('⚠️ Retry ${i + 1} error: $e');
         if (i == maxRetries - 1) {
-          throw Exception('Profile not created by trigger after ${maxRetries} retries: $e');
+          throw Exception('Profile not created by trigger after $maxRetries retries: $e');
         }
         await Future.delayed(Duration(milliseconds: 500));
       }
