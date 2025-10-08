@@ -55,6 +55,8 @@ dependencies:
   qr_flutter: ^4.1.0
   mobile_scanner: ^3.5.2
   intl: ^0.18.1
+  fl_chart: ^0.68.0
+  share_plus: ^7.2.1
   
   # Permissions & Location
   permission_handler: ^11.0.1

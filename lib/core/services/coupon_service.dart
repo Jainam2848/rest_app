@@ -64,13 +64,13 @@ class CouponService {
           .map((json) => Coupon.fromJson(json as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      throw ApiException('Failed to fetch active coupons: $e');
+      throw Exception('Failed to get active coupons: $e');
     }
   }
 
   // Create coupon
   Future<Coupon> createCoupon(Coupon coupon) async {
-    return await _api.insert<Coupon>(
+    return await _api.create<Coupon>(
       table: 'coupons',
       data: coupon.toJson(),
       fromJson: Coupon.fromJson,
@@ -89,10 +89,157 @@ class CouponService {
 
   // Delete coupon
   Future<void> deleteCoupon(String id) async {
-    await _api.delete(
+    await _api.delete(table: 'coupons', id: id);
+  }
+
+  // Activate/Deactivate coupon
+  Future<Coupon> toggleCouponStatus(String id, bool isActive) async {
+    return await _api.update<Coupon>(
       table: 'coupons',
       id: id,
+      data: {'is_active': isActive},
+      fromJson: Coupon.fromJson,
     );
+  }
+
+  // Get coupon performance analytics
+  Future<List<Map<String, dynamic>>> getCouponPerformance(String restaurantId) async {
+    try {
+      final response = await _api.client
+          .from('coupons')
+          .select('''
+            id,
+            title,
+            created_at,
+            usage_count,
+            views:coupon_views(count),
+            redemptions:coupon_redemptions(count),
+            favorites:coupon_favorites(count)
+          ''')
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', ascending: false);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      throw Exception('Failed to get coupon performance: $e');
+    }
+  }
+
+  // Get customer insights for restaurant
+  Future<List<Map<String, dynamic>>> getCustomerInsights(String restaurantId) async {
+    try {
+      final response = await _api.client
+          .from('coupon_redemptions')
+          .select('''
+            user_id,
+            users!inner(display_name, photo_url),
+            created_at,
+            coupon_id,
+            coupons!inner(categories)
+          ''')
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', ascending: false);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      throw Exception('Failed to get customer insights: $e');
+    }
+  }
+
+  // Upload coupon images
+  Future<List<String>> uploadCouponImages(String couponId, List<dynamic> files) async {
+    final urls = <String>[];
+    for (int i = 0; i < files.length; i++) {
+      final path = 'coupons/$couponId/image_${i}_${DateTime.now().millisecondsSinceEpoch}';
+      final url = await _api.uploadFile(
+        bucket: 'coupon-media',
+        path: path,
+        file: files[i],
+      );
+      urls.add(url);
+    }
+    return urls;
+  }
+
+  // Generate QR code data for coupon
+  String generateQRCodeData(Coupon coupon) {
+    return 'coupon:${coupon.id}:${coupon.code ?? ''}';
+  }
+
+  // Validate coupon redemption
+  Future<bool> validateCouponRedemption(String couponId, String userId) async {
+    try {
+      final coupon = await getCouponById(couponId);
+      if (coupon == null) return false;
+
+      // Check if coupon is valid
+      if (!coupon.isValid) return false;
+
+      // Check usage limits
+      if (coupon.isUsageLimitReached) return false;
+
+      // Check per-user limit
+      if (coupon.perUserLimit != null) {
+        final userRedemptions = await _api.client
+            .from('coupon_redemptions')
+            .select('id')
+            .eq('coupon_id', couponId)
+            .eq('user_id', userId)
+            .eq('status', 'completed');
+
+        if ((userRedemptions as List).length >= coupon.perUserLimit!) {
+          return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Redeem coupon
+  Future<CouponRedemption> redeemCoupon({
+    required String couponId,
+    required String userId,
+    required String restaurantId,
+    String? redemptionCode,
+  }) async {
+    try {
+      // Validate redemption
+      final isValid = await validateCouponRedemption(couponId, userId);
+      if (!isValid) {
+        throw Exception('Coupon redemption is not valid');
+      }
+
+      // Create redemption record
+      final redemption = CouponRedemption(
+        id: '',
+        couponId: couponId,
+        userId: userId,
+        restaurantId: restaurantId,
+        redemptionCode: redemptionCode ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        status: 'completed',
+        redeemedAt: DateTime.now(),
+        createdAt: DateTime.now(),
+      );
+
+      final createdRedemption = await _api.create<CouponRedemption>(
+        table: 'coupon_redemptions',
+        data: redemption.toJson(),
+        fromJson: CouponRedemption.fromJson,
+      );
+
+      // Update coupon usage count
+      await _api.client
+          .from('coupons')
+          .update({'usage_count': _api.client.rpc('increment_usage_count', params: {'coupon_id': couponId})})
+          .eq('id', couponId);
+
+      return createdRedemption;
+    } catch (e) {
+      throw Exception('Failed to redeem coupon: $e');
+    }
   }
 
   // Search coupons
@@ -109,99 +256,7 @@ class CouponService {
           .map((json) => Coupon.fromJson(json as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      throw ApiException('Failed to search coupons: $e');
+      throw Exception('Failed to search coupons: $e');
     }
-  }
-
-  // Redeem coupon
-  Future<CouponRedemption> redeemCoupon({
-    required String couponId,
-    required String userId,
-    required String restaurantId,
-    String? qrCode,
-    double? originalAmount,
-    double? discountAmount,
-    double? finalAmount,
-  }) async {
-    final redemption = {
-      'coupon_id': couponId,
-      'user_id': userId,
-      'restaurant_id': restaurantId,
-      'qr_code': qrCode,
-      'original_amount': originalAmount,
-      'discount_amount': discountAmount,
-      'final_amount': finalAmount,
-      'status': 'pending',
-      'redeemed_at': DateTime.now().toIso8601String(),
-    };
-
-    return await _api.insert<CouponRedemption>(
-      table: 'coupon_redemptions',
-      data: redemption,
-      fromJson: CouponRedemption.fromJson,
-    );
-  }
-
-  // Verify redemption
-  Future<CouponRedemption> verifyRedemption({
-    required String redemptionId,
-    required String verifiedBy,
-  }) async {
-    final data = {
-      'status': 'completed',
-      'verified_at': DateTime.now().toIso8601String(),
-      'verified_by': verifiedBy,
-    };
-
-    return await _api.update<CouponRedemption>(
-      table: 'coupon_redemptions',
-      id: redemptionId,
-      data: data,
-      fromJson: CouponRedemption.fromJson,
-    );
-  }
-
-  // Get redemption history for user
-  Future<List<CouponRedemption>> getUserRedemptions(String userId) async {
-    return await _api.query<CouponRedemption>(
-      table: 'coupon_redemptions',
-      fromJson: CouponRedemption.fromJson,
-      orderBy: 'redeemed_at',
-      ascending: false,
-      filters: {'user_id': userId},
-    );
-  }
-
-  // Get redemption history for restaurant
-  Future<List<CouponRedemption>> getRestaurantRedemptions(
-    String restaurantId,
-  ) async {
-    return await _api.query<CouponRedemption>(
-      table: 'coupon_redemptions',
-      fromJson: CouponRedemption.fromJson,
-      orderBy: 'redeemed_at',
-      ascending: false,
-      filters: {'restaurant_id': restaurantId},
-    );
-  }
-
-  // Upload coupon image
-  Future<String> uploadCouponImage(String couponId, dynamic file) async {
-    final path = 'coupons/$couponId/image_${DateTime.now().millisecondsSinceEpoch}';
-    return await _api.uploadFile(
-      bucket: 'coupon-media',
-      path: path,
-      file: file,
-    );
-  }
-
-  // Upload coupon video
-  Future<String> uploadCouponVideo(String couponId, dynamic file) async {
-    final path = 'coupons/$couponId/video_${DateTime.now().millisecondsSinceEpoch}';
-    return await _api.uploadFile(
-      bucket: 'coupon-media',
-      path: path,
-      file: file,
-    );
   }
 }

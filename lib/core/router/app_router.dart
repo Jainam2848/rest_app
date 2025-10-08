@@ -10,9 +10,14 @@ import '../../features/profile/screens/edit_profile_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/customer/screens/customer_home_screen.dart';
 import '../../features/restaurant/screens/restaurant_home_screen.dart';
+import '../../features/restaurant/screens/create_coupon_screen.dart';
+import '../../features/restaurant/screens/manage_coupons_screen.dart';
+import '../../features/restaurant/screens/analytics_screen.dart';
+import '../../features/restaurant/screens/qr_code_screen.dart';
 import '../../features/admin/screens/admin_home_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../models/user_role.dart';
+import '../models/coupon.dart';
 import '../providers/auth_provider.dart';
 import 'route_transitions.dart';
 
@@ -111,6 +116,43 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/profile/change-password',
         pageBuilder: (context, state) => RouteTransitions.slideRight(
           child: const ChangePasswordScreen(),
+          state: state,
+        ),
+      ),
+
+      // Restaurant Routes
+      GoRoute(
+        path: '/restaurant/create-coupon',
+        pageBuilder: (context, state) => RouteTransitions.slideRight(
+          child: CreateCouponScreen(coupon: state.extra as Coupon?),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/restaurant/manage-coupons',
+        pageBuilder: (context, state) => RouteTransitions.slideRight(
+          child: const ManageCouponsScreen(),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/restaurant/analytics',
+        pageBuilder: (context, state) => RouteTransitions.slideRight(
+          child: const RestaurantAnalyticsScreen(),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/restaurant/qr-scanner',
+        pageBuilder: (context, state) => RouteTransitions.slideUp(
+          child: const QRCodeScannerScreen(),
+          state: state,
+        ),
+      ),
+      GoRoute(
+        path: '/restaurant/qr-code/:couponId',
+        pageBuilder: (context, state) => RouteTransitions.slideRight(
+          child: QRCodeGeneratorScreen(coupon: state.extra as Coupon),
           state: state,
         ),
       ),

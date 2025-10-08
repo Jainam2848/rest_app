@@ -71,7 +71,7 @@ class RestaurantService {
 
   // Create restaurant
   Future<Restaurant> createRestaurant(Restaurant restaurant) async {
-    return await _api.insert<Restaurant>(
+    return await _api.create<Restaurant>(
       table: 'restaurants',
       data: restaurant.toJson(),
       fromJson: Restaurant.fromJson,
@@ -90,10 +90,88 @@ class RestaurantService {
 
   // Delete restaurant
   Future<void> deleteRestaurant(String id) async {
-    await _api.delete(
-      table: 'restaurants',
-      id: id,
-    );
+    await _api.delete(table: 'restaurants', id: id);
+  }
+
+  // Get restaurant analytics
+  Future<Map<String, dynamic>> getRestaurantAnalytics(String restaurantId) async {
+    try {
+      final response = await _api.client.rpc(
+        'get_restaurant_analytics',
+        params: {'restaurant_uuid': restaurantId},
+      );
+      
+      return response as Map<String, dynamic>;
+    } catch (e) {
+      // Fallback to manual calculation if RPC doesn't exist
+      return await _calculateRestaurantAnalytics(restaurantId);
+    }
+  }
+
+  // Fallback analytics calculation
+  Future<Map<String, dynamic>> _calculateRestaurantAnalytics(String restaurantId) async {
+    try {
+      // Get basic counts
+      final couponsResponse = await _api.client
+          .from('coupons')
+          .select('id, is_active')
+          .eq('restaurant_id', restaurantId);
+      
+      final redemptionsResponse = await _api.client
+          .from('coupon_redemptions')
+          .select('id, user_id')
+          .eq('restaurant_id', restaurantId);
+      
+      final viewsResponse = await _api.client
+          .from('coupon_views')
+          .select('id')
+          .inFilter('coupon_id', (couponsResponse as List)
+              .map((c) => c['id'])
+              .toList());
+      
+      final favoritesResponse = await _api.client
+          .from('coupon_favorites')
+          .select('id')
+          .inFilter('coupon_id', (couponsResponse as List)
+              .map((c) => c['id'])
+              .toList());
+
+      final totalCoupons = (couponsResponse as List).length;
+      final activeCoupons = (couponsResponse as List)
+          .where((c) => c['is_active'] == true)
+          .length;
+      final totalRedemptions = (redemptionsResponse as List).length;
+      final totalViews = (viewsResponse as List).length;
+      final totalFavorites = (favoritesResponse as List).length;
+      final uniqueCustomers = (redemptionsResponse as List)
+          .map((r) => r['user_id'])
+          .toSet()
+          .length;
+
+      return {
+        'total_coupons': totalCoupons,
+        'active_coupons': activeCoupons,
+        'total_redemptions': totalRedemptions,
+        'total_views': totalViews,
+        'total_favorites': totalFavorites,
+        'unique_customers': uniqueCustomers,
+        'conversion_rate': totalViews > 0 ? (totalRedemptions / totalViews) : 0.0,
+        'average_views_per_coupon': totalCoupons > 0 ? (totalViews / totalCoupons) : 0.0,
+        'average_redemptions_per_coupon': totalCoupons > 0 ? (totalRedemptions / totalCoupons) : 0.0,
+      };
+    } catch (e) {
+      return {
+        'total_coupons': 0,
+        'active_coupons': 0,
+        'total_redemptions': 0,
+        'total_views': 0,
+        'total_favorites': 0,
+        'unique_customers': 0,
+        'conversion_rate': 0.0,
+        'average_views_per_coupon': 0.0,
+        'average_redemptions_per_coupon': 0.0,
+      };
+    }
   }
 
   // Search restaurants
@@ -109,7 +187,7 @@ class RestaurantService {
           .map((json) => Restaurant.fromJson(json as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      throw ApiException('Failed to search restaurants: $e');
+      throw Exception('Failed to search restaurants: $e');
     }
   }
 

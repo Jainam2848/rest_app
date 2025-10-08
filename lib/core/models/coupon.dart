@@ -58,6 +58,37 @@ class Coupon extends Equatable {
   bool get isValid => !isExpired && !isUpcoming && isActive;
   bool get hasUsageLimit => usageLimit != null && usageLimit! > 0;
   bool get isUsageLimitReached => hasUsageLimit && (usageCount ?? 0) >= usageLimit!;
+  
+  // Additional helper methods for restaurant management
+  String get discountDisplayText {
+    switch (discountType) {
+      case 'percentage':
+        return '${discountValue?.toInt()}% OFF';
+      case 'fixed_amount':
+        return '\$${discountValue?.toStringAsFixed(2)} OFF';
+      case 'buy_one_get_one':
+        return 'BOGO';
+      default:
+        return 'Special Offer';
+    }
+  }
+  
+  String get validityText {
+    final now = DateTime.now();
+    if (isExpired) return 'Expired';
+    if (isUpcoming) return 'Starts ${_formatDate(startDate)}';
+    return 'Expires ${_formatDate(endDate)}';
+  }
+  
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = date.difference(now).inDays;
+    
+    if (difference == 0) return 'today';
+    if (difference == 1) return 'tomorrow';
+    if (difference < 7) return 'in $difference days';
+    return '${date.day}/${date.month}/${date.year}';
+  }
 
   factory Coupon.fromJson(Map<String, dynamic> json) {
     return Coupon(

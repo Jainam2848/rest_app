@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/restaurant_provider.dart';
+import '../../../core/widgets/custom_card.dart';
+import '../../../core/widgets/loading_indicator.dart';
+import '../../../core/widgets/error_view.dart';
+import 'create_coupon_screen.dart';
+import 'manage_coupons_screen.dart';
+import 'analytics_screen.dart';
+import 'qr_code_screen.dart';
 
 class RestaurantHomeScreen extends ConsumerStatefulWidget {
   const RestaurantHomeScreen({super.key});
@@ -15,8 +23,8 @@ class _RestaurantHomeScreenState extends ConsumerState<RestaurantHomeScreen> {
 
   final List<Widget> _pages = [
     const RestaurantDashboardPage(),
-    const RestaurantCouponsPage(),
-    const RestaurantAnalyticsPage(),
+    const ManageCouponsScreen(),
+    const RestaurantAnalyticsScreen(),
     const RestaurantProfilePage(),
   ];
 
@@ -65,10 +73,18 @@ class RestaurantDashboardPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(currentUserProvider);
+    final analyticsAsync = ref.watch(restaurantAnalyticsProvider);
+    final couponsAsync = ref.watch(restaurantCouponsProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () => context.push('/restaurant/qr-scanner'),
+          ),
+        ],
       ),
       body: userAsync.when(
         data: (user) => ListView(
@@ -91,48 +107,13 @@ class RestaurantDashboardPage extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // Stats Cards
-            Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.local_offer,
-                    title: 'Active Coupons',
-                    value: '0',
-                    color: Colors.blue,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.redeem,
-                    title: 'Redeemed',
-                    value: '0',
-                    color: Colors.green,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.visibility,
-                    title: 'Views',
-                    value: '0',
-                    color: Colors.orange,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.people,
-                    title: 'Customers',
-                    value: '0',
-                    color: Colors.purple,
-                  ),
-                ),
-              ],
+            analyticsAsync.when(
+              data: (analytics) => _buildStatsGrid(analytics),
+              loading: () => const LoadingIndicator(),
+              error: (error, stack) => ErrorView(
+                error: error.toString(),
+                onRetry: () => ref.invalidate(restaurantAnalyticsProvider),
+              ),
             ),
             const SizedBox(height: 24),
 
@@ -151,29 +132,48 @@ class RestaurantDashboardPage extends ConsumerWidget {
                     leading: const Icon(Icons.add_circle, color: Colors.blue),
                     title: const Text('Create New Coupon'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      // TODO: Navigate to create coupon
-                    },
+                    onTap: () => context.push('/restaurant/create-coupon'),
                   ),
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.edit, color: Colors.orange),
                     title: const Text('Manage Coupons'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      // TODO: Navigate to manage coupons
-                    },
+                    onTap: () => context.push('/restaurant/manage-coupons'),
                   ),
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(Icons.qr_code_scanner, color: Colors.green),
                     title: const Text('Scan QR Code'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () {
-                      // TODO: Navigate to QR scanner
-                    },
+                    onTap: () => context.push('/restaurant/qr-scanner'),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.analytics, color: Colors.purple),
+                    title: const Text('View Analytics'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/restaurant/analytics'),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Recent Coupons
+            Text(
+              'Recent Coupons',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            couponsAsync.when(
+              data: (coupons) => _buildRecentCoupons(coupons),
+              loading: () => const LoadingIndicator(),
+              error: (error, stack) => ErrorView(
+                error: error.toString(),
+                onRetry: () => ref.invalidate(restaurantCouponsProvider),
               ),
             ),
           ],
@@ -183,41 +183,77 @@ class RestaurantDashboardPage extends ConsumerWidget {
       ),
     );
   }
-}
 
-// Coupons Page
-class RestaurantCouponsPage extends StatelessWidget {
-  const RestaurantCouponsPage({super.key});
+  Widget _buildStatsGrid(dynamic analytics) {
+    if (analytics == null) {
+      return const SizedBox.shrink();
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Coupons'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () {
-              // TODO: Navigate to create coupon
-            },
-          ),
-        ],
-      ),
-      body: Center(
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                icon: Icons.local_offer,
+                title: 'Total Coupons',
+                value: analytics.totalCoupons.toString(),
+                color: Colors.blue,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.check_circle,
+                title: 'Active',
+                value: analytics.activeCoupons.toString(),
+                color: Colors.green,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                icon: Icons.visibility,
+                title: 'Views',
+                value: analytics.totalViews.toString(),
+                color: Colors.orange,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.redeem,
+                title: 'Redemptions',
+                value: analytics.totalRedemptions.toString(),
+                color: Colors.purple,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentCoupons(List<dynamic> coupons) {
+    if (coupons.isEmpty) {
+      return Card(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.local_offer_outlined,
-                size: 80,
+                size: 60,
                 color: Colors.grey[400],
               ),
               const SizedBox(height: 16),
               Text(
                 'No coupons yet',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Colors.grey[700],
                     ),
@@ -230,62 +266,42 @@ class RestaurantCouponsPage extends StatelessWidget {
                     ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Navigate to create coupon
-                },
+                onPressed: () => context.push('/restaurant/create-coupon'),
                 icon: const Icon(Icons.add),
                 label: const Text('Create Coupon'),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
+      );
+    }
 
-// Analytics Page
-class RestaurantAnalyticsPage extends StatelessWidget {
-  const RestaurantAnalyticsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Analytics'),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.analytics_outlined,
-                size: 80,
-                color: Colors.grey[400],
+    return Card(
+      child: Column(
+        children: coupons.take(3).map((coupon) {
+          return ListTile(
+            leading: CircleAvatar(
+              backgroundColor: coupon.isActive ? Colors.green : Colors.grey,
+              child: Icon(
+                Icons.local_offer,
+                color: Colors.white,
+                size: 20,
               ),
-              const SizedBox(height: 16),
-              Text(
-                'No analytics data',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[700],
-                    ),
+            ),
+            title: Text(coupon.title),
+            subtitle: Text(coupon.discountDisplayText),
+            trailing: Text(
+              coupon.isActive ? 'Active' : 'Inactive',
+              style: TextStyle(
+                color: coupon.isActive ? Colors.green : Colors.grey,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Analytics will appear once you have active coupons',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
+            ),
+            onTap: () => context.push('/restaurant/manage-coupons'),
+          );
+        }).toList(),
       ),
     );
   }
